@@ -7,16 +7,24 @@ import os
 import asyncio
 from bot.services.extractor import extract_text_from_file
 from bot.services.gpt_client import summarize_text
+from bot.services.document_generator import create_docx, create_pdf
+from bot.services.i18n import I18n, get_user_language
 from bot.config import settings
 from datetime import datetime
 
 router = Router()
 
+
 @router.message(Command("start"))
 async def start_handler(message: types.Message, state: FSMContext):
     await state.clear()
-    text = "Hello, I am AI assistant that can summarize content of PDF and Word files. Send me the Word/PDF/youtube link for summarization"
-    await message.answer(text)
+    
+    # Get user language
+    lang = get_user_language(message.from_user.language_code)
+    await state.update_data(language=lang)
+    
+    i18n = I18n(lang)
+    await message.answer(i18n("start_message"))
     await state.set_state(SummarizeStates.waiting_for_file)
 
 # Handle document input
@@ -25,25 +33,31 @@ async def handle_document(message: types.Message, state: FSMContext):
     doc = message.document
     file_name = doc.file_name.lower()
     
+    # Get user language
+    data = await state.get_data()
+    i18n = I18n(data.get('language', 'en'))
+    
     # Check if it's PDF or Word
     if not (file_name.endswith('.pdf') or file_name.endswith('.docx') or file_name.endswith('.doc')):
-        await message.answer("Please send me PDF or word file")
+        await message.answer(i18n("please_send_file"))
         return
+    
+    # Determine file type
+    if file_name.endswith('.pdf'):
+        file_type = 'pdf'
+    else:
+        file_type = 'docx'
     
     # Save file info to state
     await state.update_data(
         file_id=doc.file_id,
         file_name=doc.file_name,
-        file_path=None
+        file_path=None,
+        file_type=file_type
     )
     
-    await message.answer("Ok, than choose how much should I summarize", reply_markup=get_level_keyboard())
+    await message.answer(i18n("choose_level"), reply_markup=get_level_keyboard(i18n))
     await state.set_state(SummarizeStates.waiting_for_level)
-
-# Handle wrong input when waiting for file
-@router.message(SummarizeStates.waiting_for_file)
-async def handle_wrong_file(message: types.Message):
-    await message.answer("Please send me PDF or word file")
 
 # Handle level selection
 @router.callback_query(SummarizeStates.waiting_for_level, F.data.startswith("level_"))
@@ -51,19 +65,23 @@ async def handle_level_selection(callback: types.CallbackQuery, state: FSMContex
     level = callback.data.split("_")[1]  # short, medium, details
     await state.update_data(level=level)
     
-    await callback.message.edit_text("Ok, than choose how much should I summarize\n✓ Selected: " + level.capitalize())
-    await callback.message.answer("Summarization in progress... if your file is big summarization can take up to 5 minutes")
+    # Get user language
+    data = await state.get_data()
+    i18n = I18n(data.get('language', 'en'))
+    
+    await callback.message.edit_text(
+        f"{i18n('choose_level')}\n{i18n('selected')} {i18n('btn_' + level).capitalize()}",
+        reply_markup=None
+    )
+    await callback.message.answer(i18n("processing"))
     
     await state.set_state(SummarizeStates.processing)
     
     # Create async task for summarization
     asyncio.create_task(process_summarization(callback.message, state))
-    await callback.answer()
 
-# Handle wrong input when waiting for level
-@router.message(SummarizeStates.waiting_for_level)
-async def handle_wrong_level(message: types.Message):
-    await message.answer("Ok, than choose how much should I summarize", reply_markup=get_level_keyboard())
+
+    await callback.answer()
 
 # Process summarization in background
 async def process_summarization(message: types.Message, state: FSMContext):
@@ -72,6 +90,7 @@ async def process_summarization(message: types.Message, state: FSMContext):
         file_id = data['file_id']
         file_name = data['file_name']
         level = data['level']
+        i18n = I18n(data.get('language', 'en'))
         
         # Download file
         file = await message.bot.get_file(file_id)
@@ -83,7 +102,7 @@ async def process_summarization(message: types.Message, state: FSMContext):
         # Extract text
         text = extract_text_from_file(temp_path)
         if not text:
-            await message.answer("⚠️ Failed to extract text from file. Please try another file.")
+            await message.answer(i18n("extraction_failed"))
             await state.clear()
             return
         
@@ -95,20 +114,17 @@ async def process_summarization(message: types.Message, state: FSMContext):
         
         # Ask for format
         await message.answer(
-            "Your summarization is done. Do you want result as message or document?",
-            reply_markup=get_format_keyboard()
+            i18n("choose_format"),
+            reply_markup=get_format_keyboard(i18n)
         )
         await state.set_state(SummarizeStates.waiting_for_format)
         
     except Exception as e:
         print(f"Error in summarization: {e}")
-        await message.answer("⚠️ Error during summarization. Please try again.")
+        data = await state.get_data()
+        i18n = I18n(data.get('language', 'en'))
+        await message.answer(i18n("error_summarization"))
         await state.clear()
-
-# Handle wrong input during processing
-@router.message(SummarizeStates.processing)
-async def handle_wrong_processing(message: types.Message):
-    await message.answer("Summarization in progress... if your file is big summarization can take up to 5 minutes")
 
 # Handle format selection
 @router.callback_query(SummarizeStates.waiting_for_format, F.data.startswith("format_"))
@@ -117,8 +133,13 @@ async def handle_format_selection(callback: types.CallbackQuery, state: FSMConte
     data = await state.get_data()
     summary = data['summary']
     temp_file_path = data.get('temp_file_path')
+    file_type = data.get('file_type', 'txt')  # Get original file type
+    i18n = I18n(data.get('language', 'en'))
     
-    await callback.message.edit_text("Your summarization is done. Do you want result as message or document?\n✓ Selected: " + format_type.capitalize())
+    await callback.message.edit_text(
+        f"{i18n('choose_format')}\n{i18n('selected')} {i18n('btn_' + format_type).capitalize()}",
+        reply_markup=None
+    )
     
     if format_type == "message":
         # Send as text message
@@ -127,17 +148,32 @@ async def handle_format_selection(callback: types.CallbackQuery, state: FSMConte
             for i in range(0, len(summary), 4096):
                 await callback.message.answer(summary[i:i+4096])
         else:
-            await callback.message.answer(f"Here your summarization!\n\n{summary}")
+            await callback.message.answer(f"{i18n('here_summary')}\n\n{summary}")
     else:
-        # Send as document
-        summary_file = os.path.join(settings.TEMP_DIR, f"summary_{datetime.now().timestamp()}.txt")
-        with open(summary_file, 'w', encoding='utf-8') as f:
-            f.write(summary)
+        # Send as document in the same format as input
+        summary_file = None
+        
+        if file_type == 'pdf':
+            # Create PDF
+            summary_file = os.path.join(settings.TEMP_DIR, f"summary_{datetime.now().timestamp()}.pdf")
+            create_pdf(summary, summary_file)
+            filename = "summary.pdf"
+        elif file_type == 'docx':
+            # Create Word document
+            summary_file = os.path.join(settings.TEMP_DIR, f"summary_{datetime.now().timestamp()}.docx")
+            create_docx(summary, summary_file)
+            filename = "summary.docx"
+        else:
+            # Fallback to TXT
+            summary_file = os.path.join(settings.TEMP_DIR, f"summary_{datetime.now().timestamp()}.txt")
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                f.write(summary)
+            filename = "summary.txt"
         
         with open(summary_file, 'rb') as f:
             await callback.message.answer_document(
-                types.BufferedInputFile(f.read(), filename="summary.txt"),
-                caption="Here your summarization!"
+                types.BufferedInputFile(f.read(), filename=filename),
+                caption=i18n("here_summary")
             )
         
         # Clean up summary file
@@ -150,13 +186,5 @@ async def handle_format_selection(callback: types.CallbackQuery, state: FSMConte
     
     # Return to initial state
     await state.clear()
-    await callback.message.answer("Send me another file to summarize or use /start")
+    await callback.message.answer(i18n("send_another"))
     await callback.answer()
-
-# Handle wrong input when waiting for format
-@router.message(SummarizeStates.waiting_for_format)
-async def handle_wrong_format(message: types.Message):
-    await message.answer(
-        "Your summarization is done. Do you want result as message or document?",
-        reply_markup=get_format_keyboard()
-    )

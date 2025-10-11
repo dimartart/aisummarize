@@ -1,7 +1,7 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from bot.config import settings
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 PROMPTS = {
     "short": """You are an AI assistant that creates concise summaries.
@@ -40,7 +40,7 @@ async def summarize_text(text: str, level: str = "medium") -> str:
     prompt_template = PROMPTS.get(level, PROMPTS["medium"])
     prompt = prompt_template.format(text=text)
     
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=settings.OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
