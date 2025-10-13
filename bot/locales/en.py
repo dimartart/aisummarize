@@ -4,6 +4,8 @@ TRANSLATIONS = {
     
     # File handling
     "please_send_file": "📤 Please send me a PDF or Word file",
+    "file_too_large": "❌ File is too large! Maximum file size is 2 MB.",
+    "send_one_file": "❌ Please send only one file at a time.",
     "choose_level": "✨ Great! Now choose the level of summarization:",
     "selected": "✅ Selected:",
     
@@ -26,9 +28,13 @@ TRANSLATIONS = {
     
     # Cancel
     "action_canceled": "❌ Action canceled. You can send me a new file to summarize or use /start.",
-    
+    "cancel_during_processing": "⏳ Sorry, you cannot cancel while a file is being processed. Please wait for the summarization to finish.",
     # Fallback
     "fallback_message_title": "⚠️ Please complete the current step or use /cancel.",
     "fallback_message": "👋 I don't understand this message. Please send me a Word/PDF file or use /start.",
+    
+    # Language
+    "choose_language": "🌍 Choose interface language:",
+    "language_changed": "✅ Language changed to English!",
 }
 

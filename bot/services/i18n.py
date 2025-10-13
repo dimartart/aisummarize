@@ -21,5 +21,7 @@ def get_user_language(language_code: str) -> str:
     """Get user language from Telegram language code"""
     if language_code and language_code.startswith('ru'):
         return 'ru'
+    elif language_code and language_code.startswith('cs'):
+        return 'cs'
     return 'en'
 

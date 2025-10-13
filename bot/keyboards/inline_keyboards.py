@@ -26,3 +26,15 @@ def get_format_keyboard(i18n: I18n = None) -> InlineKeyboardMarkup:
         ]
     ])
 
+# Создаем инлайн клавиатуру для выбора языка
+def get_language_keyboard() -> InlineKeyboardMarkup:
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+            InlineKeyboardButton(text="🇺🇸 English", callback_data="lang_en")
+        ],
+        [
+            InlineKeyboardButton(text="🇨🇿 Čeština", callback_data="lang_cs")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

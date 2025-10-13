@@ -8,34 +8,42 @@ import asyncio
 from bot.services.extractor import extract_text_from_file
 from bot.services.gpt_client import summarize_text
 from bot.services.document_generator import create_docx, create_pdf
-from bot.services.i18n import I18n, get_user_language
+from bot.services.i18n import I18n
 from bot.config import settings
+from bot.utils.task_manager import add_task, remove_task, cleanup_temp_file
 from datetime import datetime
+
 
 router = Router()
 
 
 @router.message(Command("start"))
-async def start_handler(message: types.Message, state: FSMContext):
+async def start_handler(message: types.Message, state: FSMContext, user_language: str):
     await state.clear()
     
-    # Get user language
-    lang = get_user_language(message.from_user.language_code)
-    await state.update_data(language=lang)
-    
-    i18n = I18n(lang)
+    i18n = I18n(user_language)
     await message.answer(i18n("start_message"))
     await state.set_state(SummarizeStates.waiting_for_file)
 
 # Handle document input
 @router.message(SummarizeStates.waiting_for_file, F.document)
-async def handle_document(message: types.Message, state: FSMContext):
+async def handle_document(message: types.Message, state: FSMContext, user_language: str):
     doc = message.document
     file_name = doc.file_name.lower()
     
-    # Get user language
-    data = await state.get_data()
-    i18n = I18n(data.get('language', 'en'))
+    i18n = I18n(user_language)
+    
+    # Check if multiple files sent (check for other media in the message)
+    if message.photo or message.video or message.audio or message.voice:
+        await message.answer(i18n("send_one_file"))
+        return
+    
+    # Check file size (max 2 MB)
+    MAX_FILE_SIZE = 3 * 1024 * 1024  # 2 MB in bytes
+    
+    if doc.file_size > MAX_FILE_SIZE:
+        await message.answer(i18n("file_too_large"))
+        return
     
     # Check if it's PDF or Word
     if not (file_name.endswith('.pdf') or file_name.endswith('.docx') or file_name.endswith('.doc')):
@@ -61,13 +69,11 @@ async def handle_document(message: types.Message, state: FSMContext):
 
 # Handle level selection
 @router.callback_query(SummarizeStates.waiting_for_level, F.data.startswith("level_"))
-async def handle_level_selection(callback: types.CallbackQuery, state: FSMContext):
+async def handle_level_selection(callback: types.CallbackQuery, state: FSMContext, user_language: str):
     level = callback.data.split("_")[1]  # short, medium, details
     await state.update_data(level=level)
     
-    # Get user language
-    data = await state.get_data()
-    i18n = I18n(data.get('language', 'en'))
+    i18n = I18n(user_language)
     
     await callback.message.edit_text(
         f"{i18n('choose_level')}\n{i18n('selected')} {i18n('btn_' + level).capitalize()}",
@@ -77,20 +83,22 @@ async def handle_level_selection(callback: types.CallbackQuery, state: FSMContex
     
     await state.set_state(SummarizeStates.processing)
     
-    # Create async task for summarization
-    asyncio.create_task(process_summarization(callback.message, state))
-
+    # Create async task for summarization and add to tracking
+    user_id = callback.from_user.id
+    task = asyncio.create_task(process_summarization(callback.message, state, user_id, user_language))
+    add_task(user_id, task)
 
     await callback.answer()
 
 # Process summarization in background
-async def process_summarization(message: types.Message, state: FSMContext):
+async def process_summarization(message: types.Message, state: FSMContext, user_id: int, user_language: str):
+    temp_path = None
     try:
         data = await state.get_data()
         file_id = data['file_id']
         file_name = data['file_name']
         level = data['level']
-        i18n = I18n(data.get('language', 'en'))
+        i18n = I18n(user_language)
         
         # Download file
         file = await message.bot.get_file(file_id)
@@ -104,6 +112,8 @@ async def process_summarization(message: types.Message, state: FSMContext):
         if not text:
             await message.answer(i18n("extraction_failed"))
             await state.clear()
+            cleanup_temp_file(temp_path)
+            remove_task(user_id)
             return
         
         # Summarize
@@ -119,22 +129,34 @@ async def process_summarization(message: types.Message, state: FSMContext):
         )
         await state.set_state(SummarizeStates.waiting_for_format)
         
+        # Remove task from tracking after successful completion
+        remove_task(user_id)
+        
+    except asyncio.CancelledError:
+        # Task was cancelled - clean up silently
+        cleanup_temp_file(temp_path)
+        remove_task(user_id)
+        raise  # Re-raise to properly cancel
     except Exception as e:
         print(f"Error in summarization: {e}")
-        data = await state.get_data()
-        i18n = I18n(data.get('language', 'en'))
-        await message.answer(i18n("error_summarization"))
-        await state.clear()
+        try:
+            i18n = I18n(user_language)
+            await message.answer(i18n("error_summarization"))
+            await state.clear()
+        except:
+            pass  # State might be cleared already
+        cleanup_temp_file(temp_path)
+        remove_task(user_id)
 
 # Handle format selection
 @router.callback_query(SummarizeStates.waiting_for_format, F.data.startswith("format_"))
-async def handle_format_selection(callback: types.CallbackQuery, state: FSMContext):
+async def handle_format_selection(callback: types.CallbackQuery, state: FSMContext, user_language: str):
     format_type = callback.data.split("_")[1]  # message or document
     data = await state.get_data()
     summary = data['summary']
     temp_file_path = data.get('temp_file_path')
     file_type = data.get('file_type', 'txt')  # Get original file type
-    i18n = I18n(data.get('language', 'en'))
+    i18n = I18n(user_language)
     
     await callback.message.edit_text(
         f"{i18n('choose_format')}\n{i18n('selected')} {i18n('btn_' + format_type).capitalize()}",
@@ -185,6 +207,6 @@ async def handle_format_selection(callback: types.CallbackQuery, state: FSMConte
         os.remove(temp_file_path)
     
     # Return to initial state
-    await state.clear()
+    await state.set_state(SummarizeStates.waiting_for_file)
     await callback.message.answer(i18n("send_another"))
     await callback.answer()

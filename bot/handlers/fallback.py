@@ -1,13 +1,12 @@
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
-from bot.services.i18n import I18n, get_user_language
+from bot.services.i18n import I18n
 
 router = Router()
 
 @router.message()
-async def fallback_message(message: types.Message, state: FSMContext):
-    lang = get_user_language(message.from_user.language_code)
-    i18n = I18n(lang)
+async def fallback_message(message: types.Message, state: FSMContext, user_language: str):
+    i18n = I18n(user_language)
 
     current_state = await state.get_state()
     if current_state:
