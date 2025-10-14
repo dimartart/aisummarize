@@ -12,18 +12,21 @@ from bot.services.i18n import I18n
 from bot.config import settings
 from bot.utils.task_manager import add_task, remove_task, cleanup_temp_file
 from datetime import datetime
+from bot.services.logger import log_event
 
 
 router = Router()
 
 
 @router.message(Command("start"))
-async def start_handler(message: types.Message, state: FSMContext, user_language: str):
+async def start_handler(message: types.Message, state: FSMContext, user_language: str, db_user):
     await state.clear()
     
     i18n = I18n(user_language)
     await message.answer(i18n("start_message"))
     await state.set_state(SummarizeStates.waiting_for_file)
+
+    await log_event(db_user.id, "start_pressed", {"username": db_user.username})
 
 # Handle document input
 @router.message(SummarizeStates.waiting_for_file, F.document)
@@ -69,7 +72,7 @@ async def handle_document(message: types.Message, state: FSMContext, user_langua
 
 # Handle level selection
 @router.callback_query(SummarizeStates.waiting_for_level, F.data.startswith("level_"))
-async def handle_level_selection(callback: types.CallbackQuery, state: FSMContext, user_language: str):
+async def handle_level_selection(callback: types.CallbackQuery, state: FSMContext, user_language: str, db_user):
     level = callback.data.split("_")[1]  # short, medium, details
     await state.update_data(level=level)
     
@@ -85,13 +88,13 @@ async def handle_level_selection(callback: types.CallbackQuery, state: FSMContex
     
     # Create async task for summarization and add to tracking
     user_id = callback.from_user.id
-    task = asyncio.create_task(process_summarization(callback.message, state, user_id, user_language))
+    task = asyncio.create_task(process_summarization(callback.message, state, user_id, user_language, db_user))
     add_task(user_id, task)
 
     await callback.answer()
 
 # Process summarization in background
-async def process_summarization(message: types.Message, state: FSMContext, user_id: int, user_language: str):
+async def process_summarization(message: types.Message, state: FSMContext, user_id: int, user_language: str, db_user):
     temp_path = None
     try:
         data = await state.get_data()
@@ -116,8 +119,10 @@ async def process_summarization(message: types.Message, state: FSMContext, user_
             remove_task(user_id)
             return
         
-        # Summarize
+        # Summarize. Calculate processing time.
+        start_time = datetime.now()
         summary = await summarize_text(text, level)
+        processing_time = (datetime.now() - start_time).total_seconds()
         
         # Save summary to state
         await state.update_data(summary=summary, temp_file_path=temp_path)
@@ -131,6 +136,16 @@ async def process_summarization(message: types.Message, state: FSMContext, user_
         
         # Remove task from tracking after successful completion
         remove_task(user_id)
+
+        await log_event(
+            db_user.id,
+            "summary_created",
+            {
+                "level": data["level"],
+                "length": len(summary)
+            },
+            duration=processing_time
+        )
         
     except asyncio.CancelledError:
         # Task was cancelled - clean up silently
@@ -147,6 +162,12 @@ async def process_summarization(message: types.Message, state: FSMContext, user_
             pass  # State might be cleared already
         cleanup_temp_file(temp_path)
         remove_task(user_id)
+        await log_event(
+            db_user.id,
+            "summary_failed",
+            {"error": str(e)},
+            success=False
+        )
 
 # Handle format selection
 @router.callback_query(SummarizeStates.waiting_for_format, F.data.startswith("format_"))

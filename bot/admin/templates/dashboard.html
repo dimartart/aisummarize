@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Summarize Admin - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <h1>AI Summarize Admin</h1>
+        <p class="subtitle">Панель управления ботом</p>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Всего пользователей</h3>
+                <div class="value">{{ total_users }}</div>
+                <div class="change positive">+12 за неделю</div>
+            </div>
+            <div class="stat-card">
+                <h3>Активные пользователи</h3>
+                <div class="value">{{ users|selectattr('summaries_left', '>', 0)|list|length }}</div>
+                <div class="change positive">+5 сегодня</div>
+            </div>
+            <div class="stat-card">
+                <h3>Premium пользователи</h3>
+                <div class="value">{{ users|selectattr('is_premium', 'equalto', true)|list|length }}</div>
+                <div class="change positive">+2 за месяц</div>
+            </div>
+            <div class="stat-card">
+                <h3>Средняя квота</h3>
+                <div class="value">{{ (users|sum(attribute='summaries_left') / total_users)|round(1) if total_users > 0 else 0 }}</div>
+                <div class="change">осталось попыток</div>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h2>Пользователи</h2>
+                <p>Список всех зарегистрированных пользователей бота</p>
+            </div>
+            
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Telegram ID</th>
+                        <th>Username</th>
+                        <th>Язык</th>
+                        <th>Квота</th>
+                        <th>Статус</th>
+                        <th class="hide-mobile">Создан</th>
+                        <th class="hide-mobile">Обновлен</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>
+                            <span class="telegram-id">{{ user.telegram_id }}</span>
+                        </td>
+                        <td>
+                            <span class="username {% if not user.username %}none{% endif %}">
+                                {{ user.username or 'Не указан' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="language-badge">{{ user.language.upper() }}</span>
+                        </td>
+                        <td>
+                            <span class="quota {% if user.summaries_left > 15 %}high{% elif user.summaries_left > 5 %}medium{% else %}low{% endif %}">
+                                {{ user.summaries_left }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.is_premium %}
+                                <span class="status-badge premium">Premium</span>
+                            {% elif user.summaries_left == 0 %}
+                                <span class="status-badge no-quota">Нет квоты</span>
+                            {% elif user.summaries_left <= 5 %}
+                                <span class="status-badge low-quota">Мало квоты</span>
+                            {% else %}
+                                <span class="status-badge free">Free</span>
+                            {% endif %}
+                        </td>
+                        <td class="hide-mobile">
+                            <span class="date">{{ user.created_at }}</span>
+                        </td>
+                        <td class="hide-mobile">
+                            <span class="date">{{ user.updated_at }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+
+        // Add click handlers for better UX
+        document.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('.users-table tbody tr');
+            rows.forEach(row => {
+                row.addEventListener('click', function() {
+                    // Remove previous selection
+                    rows.forEach(r => r.classList.remove('selected'));
+                    // Add selection to current row
+                    this.classList.add('selected');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 import pdfplumber
 import docx
-from trafilatura import extract as extract_html
 import os
 
 def extract_text_from_file(path: str) -> str:

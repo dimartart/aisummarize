@@ -25,7 +25,7 @@ async def main():
     dp.include_routers(start.router)
     dp.include_routers(cancel.router)
     dp.include_routers(language.router)
-    dp.include_routers(fallback.router)
+    # dp.include_routers(fallback.router)
     
     await set_commands(bot)
     print("Bot started!")

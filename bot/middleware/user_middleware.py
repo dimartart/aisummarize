@@ -11,16 +11,16 @@ class UserMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        # Получаем пользователя из события
+        # Get user from event
         tg_user: User = data.get('event_from_user')
         if tg_user:
-            # Получаем или создаем пользователя в БД
+            # Get or create user in DB
             db_user = await get_or_create_user(
                 telegram_id=tg_user.id,
                 username=tg_user.username,
                 lang=get_user_language(tg_user.language_code)
             )
-            # Добавляем в data для использования в хендлерах
+            # Add user info to data for handlers
             data['db_user'] = db_user
             data['user_language'] = db_user.language
         
