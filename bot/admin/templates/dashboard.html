@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +10,7 @@
     <!-- Header -->
     <header class="header">
         <h1>AI Summarize Admin</h1>
-        <p class="subtitle">Панель управления ботом</p>
+        <p class="subtitle">Bot control panel</p>
     </header>
 
     <!-- Main Container -->
@@ -18,109 +18,204 @@
         <!-- Stats Cards -->
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Всего пользователей</h3>
+                <h3>Total Users</h3>
                 <div class="value">{{ total_users }}</div>
-                <div class="change positive">+12 за неделю</div>
             </div>
             <div class="stat-card">
-                <h3>Активные пользователи</h3>
-                <div class="value">{{ users|selectattr('summaries_left', '>', 0)|list|length }}</div>
-                <div class="change positive">+5 сегодня</div>
+                <h3>Total Summaries</h3>
+                <div class="value" id="total-summaries-card">-</div>
             </div>
             <div class="stat-card">
-                <h3>Premium пользователи</h3>
+                <h3>Premium Users</h3>
                 <div class="value">{{ users|selectattr('is_premium', 'equalto', true)|list|length }}</div>
-                <div class="change positive">+2 за месяц</div>
-            </div>
-            <div class="stat-card">
-                <h3>Средняя квота</h3>
-                <div class="value">{{ (users|sum(attribute='summaries_left') / total_users)|round(1) if total_users > 0 else 0 }}</div>
-                <div class="change">осталось попыток</div>
             </div>
         </div>
 
-        <!-- Users Table -->
+        <!-- Statistics Table -->
         <div class="table-container">
             <div class="table-header">
-                <h2>Пользователи</h2>
-                <p>Список всех зарегистрированных пользователей бота</p>
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="users">Users</button>
+                    <button class="tab-button" data-tab="statistics">Statistics</button>
+                </div>
             </div>
-            
-            <table class="users-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Telegram ID</th>
-                        <th>Username</th>
-                        <th>Язык</th>
-                        <th>Квота</th>
-                        <th>Статус</th>
-                        <th class="hide-mobile">Создан</th>
-                        <th class="hide-mobile">Обновлен</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td>{{ user.id }}</td>
-                        <td>
-                            <span class="telegram-id">{{ user.telegram_id }}</span>
-                        </td>
-                        <td>
-                            <span class="username {% if not user.username %}none{% endif %}">
-                                {{ user.username or 'Не указан' }}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="language-badge">{{ user.language.upper() }}</span>
-                        </td>
-                        <td>
-                            <span class="quota {% if user.summaries_left > 15 %}high{% elif user.summaries_left > 5 %}medium{% else %}low{% endif %}">
-                                {{ user.summaries_left }}
-                            </span>
-                        </td>
-                        <td>
-                            {% if user.is_premium %}
-                                <span class="status-badge premium">Premium</span>
-                            {% elif user.summaries_left == 0 %}
-                                <span class="status-badge no-quota">Нет квоты</span>
-                            {% elif user.summaries_left <= 5 %}
-                                <span class="status-badge low-quota">Мало квоты</span>
-                            {% else %}
-                                <span class="status-badge free">Free</span>
-                            {% endif %}
-                        </td>
-                        <td class="hide-mobile">
-                            <span class="date">{{ user.created_at }}</span>
-                        </td>
-                        <td class="hide-mobile">
-                            <span class="date">{{ user.updated_at }}</span>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+            <!-- Users section -->
+            <div id="users-section" data-tab-content="users">
+                <!-- Search filters -->
+                <div class="users-filters">
+                    <div class="filter-field">
+                        <label for="filter-telegram">Telegram ID</label>
+                        <input id="filter-telegram" type="text" placeholder="Search by Telegram ID">
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-username">Username</label>
+                        <input id="filter-username" type="text" placeholder="Search by Username">
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-created">Created Date</label>
+                        <input id="filter-created" type="date">
+                    </div>
+                    <div class="filter-actions">
+                        <button id="filter-clear" class="button-clear">Clear Filters</button>
+                    </div>
+                </div>
+                
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Telegram ID</th>
+                            <th>Username</th>
+                            <th>Language</th>
+                            <th>Quota</th>
+                            <th>Status</th>
+                            <th class="hide-mobile">Created</th>
+                            <th class="hide-mobile">Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>
+                                <span class="telegram-id">{{ user.telegram_id }}</span>
+                            </td>
+                            <td>
+                                <span class="username {% if not user.username %}none{% endif %}">
+                                    {{ user.username or 'Not specified' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="language-badge">{{ user.language.upper() }}</span>
+                            </td>
+                            <td>
+                                <span class="quota {% if user.summaries_left > 15 %}high{% elif user.summaries_left > 5 %}medium{% else %}low{% endif %}">
+                                    {{ user.summaries_left }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if user.is_premium %}
+                                    <span class="status-badge premium">Premium</span>
+                                {% elif user.summaries_left == 0 %}
+                                    <span class="status-badge no-quota">No quota</span>
+                                {% elif user.summaries_left <= 5 %}
+                                    <span class="status-badge low-quota">Low quota</span>
+                                {% else %}
+                                    <span class="status-badge free">Free</span>
+                                {% endif %}
+                            </td>
+                            <td class="hide-mobile">
+                                <span class="date">{{ user.created_at }}</span>
+                            </td>
+                            <td class="hide-mobile">
+                                <span class="date">{{ user.updated_at }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                
+                <!-- Pagination -->
+                <div class="pagination">
+                    <button id="prev-page" class="pagination-btn" disabled>Previous</button>
+                    <span class="pagination-info">
+                        Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+                        (<span id="showing-count">0</span> of <span id="total-count">0</span> users)
+                    </span>
+                    <button id="next-page" class="pagination-btn">Next</button>
+                </div>
+            </div>
+
+            <!-- Statistics section -->
+            <div id="statistics-section" class="hidden" data-tab-content="statistics">
+                <div class="statistics">
+                    <!-- Metrics Cards -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-label">DAU (24h)</div>
+                                <div class="metric-value" id="metric-dau">-</div>
+                                <div class="metric-description">Daily Active Users</div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-label">MAU (30d)</div>
+                                <div class="metric-value" id="metric-mau">-</div>
+                                <div class="metric-description">Monthly Active Users</div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-label">DAU/MAU Ratio</div>
+                                <div class="metric-value" id="metric-ratio">-</div>
+                                <div class="metric-description">Engagement Rate</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="stats-filters">
+                        <div class="filter-group">
+                            <label for="stats-month">Month</label>
+                            <select id="stats-month" class="stats-select">
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="stats-year">Year</label>
+                            <select id="stats-year" class="stats-select">
+                                <!-- Years will be populated by JS -->
+                            </select>
+                        </div>
+                        <div class="stats-summary">
+                            <div class="summary-item">
+                                <span class="summary-label">Total Summaries</span>
+                                <span class="summary-value" id="total-summaries">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="summaries-chart"></canvas>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(function() {
-            location.reload();
-        }, 30000);
-
-        // Add click handlers for better UX
-        document.addEventListener('DOMContentLoaded', function() {
-            const rows = document.querySelectorAll('.users-table tbody tr');
-            rows.forEach(row => {
-                row.addEventListener('click', function() {
-                    // Remove previous selection
-                    rows.forEach(r => r.classList.remove('selected'));
-                    // Add selection to current row
-                    this.classList.add('selected');
-                });
-            });
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/script.js"></script>
 </body>
 </html>

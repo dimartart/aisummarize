@@ -12,7 +12,7 @@ from bot.services.i18n import I18n
 from bot.config import settings
 from bot.utils.task_manager import add_task, remove_task, cleanup_temp_file
 from datetime import datetime
-from bot.services.logger import log_event
+from bot.database.crud import create_summary_record
 
 
 router = Router()
@@ -26,11 +26,10 @@ async def start_handler(message: types.Message, state: FSMContext, user_language
     await message.answer(i18n("start_message"))
     await state.set_state(SummarizeStates.waiting_for_file)
 
-    await log_event(db_user.id, "start_pressed", {"username": db_user.username})
 
 # Handle document input
 @router.message(SummarizeStates.waiting_for_file, F.document)
-async def handle_document(message: types.Message, state: FSMContext, user_language: str):
+async def handle_document(message: types.Message, state: FSMContext, user_language: str, db_user):
     doc = message.document
     file_name = doc.file_name.lower()
     
@@ -136,24 +135,12 @@ async def process_summarization(message: types.Message, state: FSMContext, user_
         
         # Remove task from tracking after successful completion
         remove_task(user_id)
+        # Create success variable
+        success = True
 
-        await log_event(
-            db_user.id,
-            "summary_created",
-            {
-                "level": data["level"],
-                "length": len(summary)
-            },
-            duration=processing_time
-        )
-        
-    except asyncio.CancelledError:
-        # Task was cancelled - clean up silently
-        cleanup_temp_file(temp_path)
-        remove_task(user_id)
-        raise  # Re-raise to properly cancel
     except Exception as e:
         print(f"Error in summarization: {e}")
+        success = False
         try:
             i18n = I18n(user_language)
             await message.answer(i18n("error_summarization"))
@@ -162,12 +149,9 @@ async def process_summarization(message: types.Message, state: FSMContext, user_
             pass  # State might be cleared already
         cleanup_temp_file(temp_path)
         remove_task(user_id)
-        await log_event(
-            db_user.id,
-            "summary_failed",
-            {"error": str(e)},
-            success=False
-        )
+    
+    # Create summary record in database
+    await create_summary_record(user_id=db_user.id, file_type=data['file_type'], level=level, duration=processing_time, success=success)
 
 # Handle format selection
 @router.callback_query(SummarizeStates.waiting_for_format, F.data.startswith("format_"))
